@@ -169,9 +169,9 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           PREFIX="${{ steps.prefix.outputs.value }}"
-          "${PREFIX}/bin/clang-19"   --version
-          "${PREFIX}/bin/clang++-19" --version
-          echo 'int main(){}' | "${PREFIX}/bin/clang++-19" -std=c++26 -freflection -x c++ - -o /dev/null \
+          "${PREFIX}/bin/clang"   --version
+          "${PREFIX}/bin/clang++" --version
+          echo 'int main(){}' | "${PREFIX}/bin/clang++" -std=c++26 -freflection -x c++ - -o /dev/null \
             && echo "✓ -freflection accepted" \
             || echo "⚠ -freflection not supported by this build"
 
@@ -180,8 +180,8 @@ jobs:
         shell: cmd
         run: |
           set PREFIX=${{ steps.prefix.outputs.value }}
-          "%PREFIX%\bin\clang-19.exe"   --version
-          "%PREFIX%\bin\clang++19.exe"  --version
+          "%PREFIX%\bin\clang.exe"   --version
+          "%PREFIX%\bin\clang++.exe"  --version
 
       # ── Package & upload ───────────────────────────────────────────────
       - name: Package Clang (macOS / Linux)
