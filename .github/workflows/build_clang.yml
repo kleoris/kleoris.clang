@@ -188,7 +188,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           PREFIX="${{ steps.prefix.outputs.value }}"
-          tar -cJf clang-19-${{ matrix.runtime.name }}.tar.xz \
+          tar -cJf clang-${{ matrix.runtime.name }}.tar.xz \
             -C "$(dirname "${PREFIX}")" "$(basename "${PREFIX}")"
 
       - name: Package Clang (Windows)
@@ -196,14 +196,14 @@ jobs:
         shell: bash
         run: |
           PREFIX="${{ steps.prefix.outputs.value }}"
-          tar -cJf clang-19-${{ matrix.runtime.name }}.tar.xz \
+          tar -cJf clang-${{ matrix.runtime.name }}.tar.xz \
             -C "$(dirname "${PREFIX}")" "$(basename "${PREFIX}")"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: clang-19-${{ matrix.runtime.name }}
-          path: clang-19-${{ matrix.runtime.name }}.tar.xz
+          name: clang-${{ matrix.runtime.name }}
+          path: clang-${{ matrix.runtime.name }}.tar.xz
           retention-days: 30
 
   # ── Release: collect all platform artifacts and publish a release ──────
