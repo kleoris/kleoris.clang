@@ -1,0 +1,234 @@
+#
+# Original project: Kleoris - A modern Javascript/react runtime for desktop app.
+# by Laurent Mihalkovic 
+#
+# -------------------------------------------------------------------------
+# Copyright (c) 2025-present, Laurent Mihalkovic. All rights reserved.
+
+name: Build CLANG 19 with P2996 support
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform to build (or "all"  to build every matrix entry)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos-clang-19
+          - linux-clang-19
+          - win-clang-19
+      clang_ref_default:
+        description: 'Branch/tag for Linux & Windows (clang-mirror/clang)'
+        required: false
+        default: 'p2996'
+      # clang_ref_macos:
+      #   description: 'Branch/tag for macOS (iains/clang-darwin-arm64)'
+      #   required: false
+      #   default: 'master-wip-apple-si'
+      release_tag:
+        description: 'Git tag to create a GitHub release (e.g. v19.0.0-p2996-1). Leave blank to skip release creation.'
+        required: false
+        default: ''
+
+
+jobs:
+  # ── Prepare: create dynamic matrix for target platforms ────────────────
+  # instead of the standard static matrix, a JSON file is generated
+  # based on the input and passed to the main job, and then used as 
+  # a dynamic matrix
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Resolve target matrix
+        id: resolve
+        run: |
+          ALL='[
+            {"name":"macos-clang-19", "os":"macos-latest"},
+            {"name":"linux-clang-19", "os":"ubuntu-latest"},
+            {"name":"win-clang-19",   "os":"windows-latest"}
+          ]'
+          PLATFORM="${{ inputs.platform }}"
+          if [[ "$PLATFORM" == "all" || -z "$PLATFORM" ]]; then
+            MATRIX="$ALL"
+          else
+            MATRIX=$(echo "$ALL" | jq --arg p "$PLATFORM" '[.[] | select(.name == $p)]')
+          fi
+          echo "matrix=$(echo "$MATRIX" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  # ── Main build job ─────────────────────────────────────────────────────
+  main:
+    needs: prepare
+    runs-on: ${{ matrix.runtime.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    steps:
+      # ── Source checkout ────────────────────────────────────────────────
+      - name: Checkout CLANG source (all platforms — bloomberg/clang-p2996)
+        # if: runner.os == 'macOS'
+        uses: actions/checkout@v4
+        with:
+          repository: bloomberg/clang-p2996
+          ref: ${{ inputs.clang_ref_default || 'master' }}
+          path: clang-src
+
+      # ── Dependencies ───────────────────────────────────────────────────
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja python3
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake ninja-build python3 \
+            build-essential
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja --no-progress -y
+
+      # ── Define install prefix per platform ─────────────────────────────
+      - name: Set install prefix
+        id: prefix
+        shell: bash
+        run: |
+          if   [[ "$RUNNER_OS" == "macOS"   ]]; then echo "value=/opt/homebrew/clang-19" >> "$GITHUB_OUTPUT"
+          elif [[ "$RUNNER_OS" == "Linux"   ]]; then echo "value=/usr/local/clang-19"    >> "$GITHUB_OUTPUT"
+          else                                       echo "value=C:/Dev/clang-19"        >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Configure ──────────────────────────────────────────────────────
+      - name: Configure Clang (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -S clang-src/llvm -B clang-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" \
+            -DLLVM_ENABLE_PROJECTS="clang" \
+            -DLLVM_TARGETS_TO_BUILD="host" \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DCLANG_INCLUDE_TESTS=OFF
+
+      - name: Configure Clang (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cmake -S clang-src/llvm -B clang-build ^
+            -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" ^
+            -DLLVM_ENABLE_PROJECTS=clang ^
+            -DLLVM_TARGETS_TO_BUILD=host ^
+            -DLLVM_ENABLE_ASSERTIONS=OFF ^
+            -DLLVM_INCLUDE_TESTS=OFF ^
+            -DLLVM_INCLUDE_BENCHMARKS=OFF ^
+            -DCLANG_INCLUDE_TESTS=OFF
+
+      # ── Build ──────────────────────────────────────────────────────────
+      - name: Build Clang (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          ninja -C clang-build -j"${JOBS}" 2>&1 | tee build.log
+
+      - name: Build Clang (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: ninja -C clang-build
+
+      # ── Install ────────────────────────────────────────────────────────
+      - name: Install Clang (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: sudo ninja -C clang-build install
+
+      - name: Install Clang (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: ninja -C clang-build install
+
+      # ── Smoke test ─────────────────────────────────────────────────────
+      - name: Smoke-test installed compiler (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          PREFIX="${{ steps.prefix.outputs.value }}"
+          "${PREFIX}/bin/clang-19"   --version
+          "${PREFIX}/bin/clang++-19" --version
+          echo 'int main(){}' | "${PREFIX}/bin/clang++-19" -std=c++26 -freflection -x c++ - -o /dev/null \
+            && echo "✓ -freflection accepted" \
+            || echo "⚠ -freflection not supported by this build"
+
+      - name: Smoke-test installed compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          set PREFIX=${{ steps.prefix.outputs.value }}
+          "%PREFIX%\bin\clang-19.exe"   --version
+          "%PREFIX%\bin\clang++19.exe"  --version
+
+      # ── Package & upload ───────────────────────────────────────────────
+      - name: Package Clang (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          PREFIX="${{ steps.prefix.outputs.value }}"
+          tar -cJf clang-19-${{ matrix.runtime.name }}.tar.xz \
+            -C "$(dirname "${PREFIX}")" "$(basename "${PREFIX}")"
+
+      - name: Package Clang (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          PREFIX="${{ steps.prefix.outputs.value }}"
+          tar -cJf clang-19-${{ matrix.runtime.name }}.tar.xz \
+            -C "$(dirname "${PREFIX}")" "$(basename "${PREFIX}")"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-19-${{ matrix.runtime.name }}
+          path: clang-19-${{ matrix.runtime.name }}.tar.xz
+          retention-days: 30
+
+  # ── Release: collect all platform artifacts and publish a release ──────
+  release:
+    if: ${{ inputs.release_tag != '' }}
+    needs: main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: Clang 19 + P2996 — ${{ inputs.release_tag }}
+          draft: false
+          prerelease: true
+          body: |
+            Clang 19 (bloomberg/clang-p2996) with P2996 static-reflection support.
+
+            Sources used:
+            - All platforms (bloomberg/clang-p2996 @ `${{ inputs.clang_ref_default }}`)
+          files: dist/*.tar.xz
+
