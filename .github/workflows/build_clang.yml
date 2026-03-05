@@ -5,7 +5,7 @@
 # -------------------------------------------------------------------------
 # Copyright (c) 2025-present, Laurent Mihalkovic. All rights reserved.
 
-name: Build CLANG 19 with P2996 support
+name: Build CLANG 21 with P2996 support
 
 permissions:
   contents: write
@@ -20,19 +20,18 @@ on:
         type: choice
         options:
           - all
-          - macos-clang-19
-          - linux-clang-19
-          - win-clang-19
+          - macos-clang-21
+          - linux-clang-21
+          - win-clang-21
       clang_ref_default:
         description: 'Branch/tag for Linux & Windows (clang-mirror/clang)'
-        required: false
-        default: 'p2996'
+        required: true
       # clang_ref_macos:
       #   description: 'Branch/tag for macOS (iains/clang-darwin-arm64)'
       #   required: false
       #   default: 'master-wip-apple-si'
       release_tag:
-        description: 'Git tag to create a GitHub release (e.g. v19.0.0-p2996-1). Leave blank to skip release creation.'
+        description: 'Git tag to create a GitHub release (e.g. v21.0.0-p2996-1). Leave blank to skip release creation.'
         required: false
         default: ''
 
@@ -47,13 +46,20 @@ jobs:
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
+      - name: Validate inputs
+        run: |
+          if [[ -z "${{ inputs.clang_ref_default }}" ]]; then
+            echo "::error::clang_ref_default is required but was not provided or is empty"
+            exit 1
+          fi
+
       - name: Resolve target matrix
         id: resolve
         run: |
           ALL='[
-            {"name":"macos-clang-19", "os":"macos-latest"},
-            {"name":"linux-clang-19", "os":"ubuntu-latest"},
-            {"name":"win-clang-19",   "os":"windows-latest"}
+            {"name":"macos-clang-21", "os":"macos-latest"},
+            {"name":"linux-clang-21", "os":"ubuntu-latest"},
+            {"name":"win-clang-21",   "os":"windows-latest"}
           ]'
           PLATFORM="${{ inputs.platform }}"
           if [[ "$PLATFORM" == "all" || -z "$PLATFORM" ]]; then
@@ -80,7 +86,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bloomberg/clang-p2996
-          ref: ${{ inputs.clang_ref_default || 'master' }}
+          ref: ${{ inputs.clang_ref_default }}
           path: clang-src
 
       # ── Dependencies ───────────────────────────────────────────────────
@@ -107,22 +113,40 @@ jobs:
         id: prefix
         shell: bash
         run: |
-          if   [[ "$RUNNER_OS" == "macOS"   ]]; then echo "value=/opt/homebrew/clang-19" >> "$GITHUB_OUTPUT"
-          elif [[ "$RUNNER_OS" == "Linux"   ]]; then echo "value=/usr/local/clang-19"    >> "$GITHUB_OUTPUT"
-          else                                       echo "value=C:/Dev/clang-19"        >> "$GITHUB_OUTPUT"
+          if   [[ "$RUNNER_OS" == "macOS"   ]]; then echo "value=/opt/homebrew/clang-21" >> "$GITHUB_OUTPUT"
+          elif [[ "$RUNNER_OS" == "Linux"   ]]; then echo "value=/usr/local/clang-21"    >> "$GITHUB_OUTPUT"
+          else                                       echo "value=C:/Dev/clang-21"        >> "$GITHUB_OUTPUT"
           fi
 
       # ── Configure ──────────────────────────────────────────────────────
-      - name: Configure Clang (macOS / Linux)
-        if: runner.os != 'Windows'
+      - name: Configure Clang (macOS)
+        if: runner.os == 'macOS'
         run: |
           cmake -S clang-src/llvm -B clang-build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" \
+            -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) \
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
             -DLLVM_ENABLE_PROJECTS="clang" \
             -DLLVM_TARGETS_TO_BUILD="host" \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DCLANG_INCLUDE_TESTS=OFF
+
+      - name: Configure Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S clang-src/llvm -B clang-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" \
+            -DLLVM_USE_LINKER=lld \
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+            -DLLVM_ENABLE_PROJECTS="clang" \
+            -DLLVM_TARGETS_TO_BUILD="host" \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_INCLUDE_TESTS=OFF \
             -DLLVM_INCLUDE_BENCHMARKS=OFF \
             -DCLANG_INCLUDE_TESTS=OFF
@@ -137,7 +161,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" ^
             -DLLVM_ENABLE_PROJECTS=clang ^
             -DLLVM_TARGETS_TO_BUILD=host ^
-            -DLLVM_ENABLE_ASSERTIONS=OFF ^
+            -DLLVM_ENABLE_ASSERTIONS=ON ^
             -DLLVM_INCLUDE_TESTS=OFF ^
             -DLLVM_INCLUDE_BENCHMARKS=OFF ^
             -DCLANG_INCLUDE_TESTS=OFF
@@ -222,11 +246,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
-          name: Clang 19 + P2996 — ${{ inputs.release_tag }}
+          name: Clang 21 + P2996 — ${{ inputs.release_tag }}
           draft: false
           prerelease: true
           body: |
-            Clang 19 (bloomberg/clang-p2996) with P2996 static-reflection support.
+            Clang 21 (bloomberg/clang-p2996) with P2996 static-reflection support.
 
             Sources used:
             - All platforms (bloomberg/clang-p2996 @ `${{ inputs.clang_ref_default }}`)
