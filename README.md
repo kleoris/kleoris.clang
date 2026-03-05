@@ -26,7 +26,7 @@ This repository contains nothing but a GitHub Actions workflow that builds CLANG
 | Linux | `/usr/local/clang-21` |
 | Windows | `C:/Dev/clang-21` |
 
-Binaries are installed as `clang-21` / `clang++-21`.
+Binaries are installed as `clang` / `clang++`.
 
 ## Platforms
 
