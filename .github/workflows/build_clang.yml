@@ -122,12 +122,14 @@ jobs:
       - name: Configure Clang (macOS)
         if: runner.os == 'macOS'
         run: |
+          SDK=$(xcrun --show-sdk-path)
           cmake -S clang-src/llvm -B clang-build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" \
-            -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path) \
-            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+            -DCMAKE_OSX_SYSROOT="${SDK}" \
+            -DDEFAULT_SYSROOT="${SDK}" \
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
             -DLLVM_ENABLE_PROJECTS="clang" \
             -DLLVM_TARGETS_TO_BUILD="host" \
             -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -143,7 +145,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${{ steps.prefix.outputs.value }}" \
             -DLLVM_USE_LINKER=lld \
-            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
             -DLLVM_ENABLE_PROJECTS="clang" \
             -DLLVM_TARGETS_TO_BUILD="host" \
             -DLLVM_ENABLE_ASSERTIONS=ON \
