@@ -10,6 +10,8 @@ CI toolchain builder for **CLANG 21 (with C++26 P2996 static-reflection support)
 
 This repository contains nothing but a GitHub Actions workflow that builds CLANG 21 from source for all three supported platforms and publishes the result as a downloadable artifact. It is a companion to [kleoris](https://github.com/kleoris/kleoris_cpp), which requires a C++26 compiler with P2996 support.
 
+# Building the compiler
+
 ## What gets built
 
 - Build system: CMake + Ninja (single-stage Release build)
@@ -74,3 +76,12 @@ All three platforms check out the same [bloomberg/clang-p2996](https://github.co
 * `DLLVM_INCLUDE_BENCHMARKS=OFF` — only useful for dev.
 * `DLLVM_ENABLE_ASSERTIONS=ON` — the assertions are ON despite the overhead because this is a very experimental compiler
 * `DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"` — using the clang unwinder rather than the system's
+
+# Using the compiler
+
+## macOS
+
+```shell
+sudo tar -xJf clang-macos-clang-21.tar.xz -C /opt/homebrew
+/opt/homebrew/clang-21/bin/clang --version
+```

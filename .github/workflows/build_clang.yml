@@ -26,6 +26,7 @@ on:
       clang_ref_default:
         description: 'Branch/tag for Linux & Windows (clang-mirror/clang)'
         required: true
+        default: 'p2996'
       # clang_ref_macos:
       #   description: 'Branch/tag for macOS (iains/clang-darwin-arm64)'
       #   required: false
